@@ -41,14 +41,14 @@ make install        # creates .venv and installs the package
 make run            # generate data, SQL features, train, score  (~15 s)
 make experiments    # optional: the unseen-typology experiment    (~20 s)
 make dashboard      # opens http://localhost:8501
-make test           # 43 tests
+make test           # 48 tests
 ```
 
 No accounts, API keys or downloads are needed. Everything is generated locally from a fixed seed.
 
 ## The data, and why it is synthetic
 
-Real payment data is confidential. The public alternatives were not a good fit: PaySim needs a Kaggle login and has few columns, and the ULB credit-card set has anonymised features, so nothing in an alert can be explained to a human. This repository generates its own data with a fixed seed instead (`src/fraudwatch/generate.py`).
+Real payment data is confidential. The public alternatives were not a good fit: PaySim needs a Kaggle login and has few columns (it is benchmarked separately below), and the ULB credit-card set has anonymised features, so nothing in an alert can be explained to a human. This repository generates its own data with a fixed seed instead (`src/fraudwatch/generate.py`).
 
 Two design choices keep it from being trivially solvable:
 
@@ -132,6 +132,28 @@ The hybrid recovers most of what the rules catch, and the model alone misses alm
 
 ![Model and rules evaluation](docs/figures/model-evaluation.jpg)
 
+## Benchmark on the public PaySim data set
+
+The main project uses synthetic data I generated, so I also ran the same approach on a well-known public one: **PaySim** (Lopez-Rojas, Elmir and Axelsson, 2016; [Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1), CC BY-SA 4.0), 6.36 million mobile-money transactions. The file is about 470 MB and needs a Kaggle login, so it is not in this repository:
+
+```bash
+# download archive.zip from Kaggle, unzip it, then:
+make paysim CSV=path/to/PS_20174392719_1491204439457_log.csv     # about 15 s
+```
+
+Same discipline as the main project: SQL features with strictly backward windows, a time-based split (train 70%, validate 15%, test 15% of rows) and a 0.5% review budget. PaySim has almost no customer history (nearly every origin account appears once), so look-back features are built on the *destination* account, where fraudulent "mule" accounts receive many transfers.
+
+| System (test period, 918,617 transactions, 4,006 fraud) | PR-AUC | Alert rate | Precision | Recall | Fraud value caught |
+|---|---|---|---|---|---|
+| Dataset's own `isFlaggedFraud` rule | n/a | 0.00% | 100% | 0.3% | 1% |
+| Rule: transfer or cash-out that empties the account | n/a | 19.1% | 2% | 97% | 84% |
+| ML, behavioural features only (12 features) | 0.482 | 0.50% | 43% | 50% | 84% |
+| ML, plus balance features (18 features) | **1.000** | 0.50% | 87% | 100% | 100% |
+
+**What this shows.** A perfect PR-AUC is not a success story; it is a warning. PaySim fraud always empties the origin account, so the balance columns hand the model the answer. Without them, the same model scores 0.48, which is a much more honest picture of how hard the behavioural problem is. The dataset's own rule flags almost nothing, and the obvious analyst rule flags 19% of all traffic at 2% precision, which no review team could work. Results on this data set should be read with that in mind, and I would not quote the 1.000 in an interview without saying so.
+
+The test period also has a fraud rate of 0.44% against 0.08% in training, because PaySim's late steps contain far fewer legitimate transactions. That drift is a good reminder of why thresholds are chosen on a validation period and then monitored.
+
 ## Design decisions
 
 | Decision | Why |
@@ -165,15 +187,17 @@ src/fraudwatch/
   cases.py         case queue and decisions
   pipeline.py      generate -> features -> train -> score
   experiments.py   unseen-typology experiment
+  paysim.py        benchmark on the public PaySim data set
+  sql/paysim_features.sql  PaySim feature pipeline
   cli.py           `fraudwatch run | dashboard | ...`
 app/dashboard.py   Streamlit dashboard and case review
-tests/             43 tests (features, rules, scoring, generator, end to end)
+tests/             48 tests (features, rules, scoring, generator, PaySim, end to end)
 ```
 
 ## Tests and CI
 
-`make test` runs 43 tests, including look-ahead checks on the SQL features, rule-engine edge cases, review-budget logic and an end-to-end run on a small simulation. GitHub Actions runs lint, tests and a smoke run on every push.
+`make test` runs 48 tests, including look-ahead checks on the SQL features, rule-engine edge cases, review-budget logic and an end-to-end run on a small simulation. GitHub Actions runs lint, tests and a smoke run on every push.
 
 ## Licence
 
-MIT. All data is synthetic and contains no personal information.
+MIT for the code. The generated data is synthetic and contains no personal information. PaySim is a third-party data set under CC BY-SA 4.0; it is downloaded by the user and never redistributed here.

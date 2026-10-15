@@ -6,6 +6,7 @@ import argparse
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 from .config import ROOT, Paths
 from .pipeline import (
@@ -32,12 +33,21 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--customers", type=int, default=5000)
         p.add_argument("--seed", type=int, default=42)
     sub.add_parser("dashboard", help="open the Streamlit dashboard and case review")
+    ps = sub.add_parser("paysim", help="benchmark on the public PaySim data set (needs the CSV)")
+    ps.add_argument("--csv", type=Path, required=True, help="path to the PaySim CSV from Kaggle")
 
     args = parser.parse_args(argv)
     paths = Paths()
     if args.cmd == "dashboard":
         app = ROOT / "app" / "dashboard.py"
         return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app)])
+
+    if args.cmd == "paysim":
+        from .paysim import format_report, run_benchmark
+
+        report = run_benchmark(args.csv, paths.base / "reports" / "paysim.json")
+        print(format_report(report))
+        return 0
 
     params = Params(n_customers=args.customers, seed=args.seed)
     steps = {

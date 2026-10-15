@@ -1,4 +1,4 @@
-.PHONY: install demo run dashboard test lint experiments clean
+.PHONY: install demo run dashboard test lint experiments paysim clean
 
 PY := .venv/bin/python
 
@@ -11,6 +11,9 @@ run:            ## generate data, build SQL features, train, score
 
 experiments:    ## unseen-typology experiment (about 20 s)
 	$(PY) -m fraudwatch.experiments
+
+paysim:         ## benchmark on PaySim: make paysim CSV=path/to/PS_..._log.csv
+	.venv/bin/fraudwatch paysim --csv $(CSV)
 
 dashboard:
 	.venv/bin/fraudwatch dashboard
