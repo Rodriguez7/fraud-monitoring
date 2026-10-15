@@ -1,0 +1,72 @@
+# Detection rules. Each rule is a set of conditions on features from the SQL pipeline.
+# `weight` is the rule's own estimate of "how likely is fraud when this fires" (0-1).
+# Weights from several fired rules combine with noisy-OR, so independent evidence adds up
+# but never exceeds 1.0. Tune them from analyst outcomes (see the dashboard's rule table).
+#
+# `escalate: true` means the rule alone is trusted enough to open a case. Rules without it
+# (noisy ones such as velocity or impossible travel) only add to the risk score.
+#
+# Supported operators: >=, <=, >, <, ==, !=, in
+rules:
+  - id: R01
+    name: velocity_burst
+    description: Five or more transactions in the previous 10 minutes
+    weight: 0.30
+    all:
+      - {feature: cnt_10m, op: ">=", value: 5}
+
+  - id: R02
+    name: card_testing
+    description: Tiny online payments at new merchants in quick succession
+    weight: 0.65
+    escalate: true
+    all:
+      - {feature: is_online, op: "==", value: 1}
+      - {feature: cnt_10m, op: ">=", value: 3}
+      - {feature: amount_eur, op: "<=", value: 10}
+      - {feature: is_new_merchant, op: "==", value: 1}
+
+  - id: R03
+    name: account_takeover_signature
+    description: High-value risky purchase abroad from a device first seen in the last 24 hours
+    weight: 0.70
+    escalate: true
+    all:
+      - {feature: is_new_device, op: "==", value: 1}
+      - {feature: is_cross_border, op: "==", value: 1}
+      - {feature: amount_eur, op: ">=", value: 300}
+      - {feature: category_risk, op: ">=", value: 2}
+
+  - id: R04
+    name: impossible_travel
+    description: Card used in a different country less than two hours after the previous payment
+    weight: 0.55
+    all:
+      - {feature: country_changed_fast, op: "==", value: 1}
+
+  - id: R05
+    name: structuring
+    description: Repeated transfers just below the 10,000 EUR reporting threshold within 48 hours
+    weight: 0.60
+    escalate: true
+    all:
+      - {feature: is_near_threshold, op: "==", value: 1}
+      - {feature: near_threshold_48h, op: ">=", value: 1}
+
+  - id: R06
+    name: cash_out_pattern
+    description: Third or later transfer within 24 hours, to a payee first seen in the last 24 hours
+    weight: 0.50
+    escalate: true
+    all:
+      - {feature: is_transfer, op: "==", value: 1}
+      - {feature: is_new_payee, op: "==", value: 1}
+      - {feature: transfers_24h, op: ">=", value: 3}
+
+  - id: R07
+    name: amount_anomaly
+    description: "Amount far above this customer's 30-day pattern (noisy, because one-off purchases trip it)"
+    weight: 0.20
+    all:
+      - {feature: amount_z, op: ">=", value: 8}
+      - {feature: amount_eur, op: ">=", value: 1000}
